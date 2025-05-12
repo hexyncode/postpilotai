@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ dev ]
+  pull_request:
+    branches: [ dev ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postpilotai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postpilotai
+      JWT_SECRET_KEY: test-secret
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Run setup script
+        run: |
+          chmod +x setup.sh
+          ./setup.sh
+
+      - name: Start backend server (test)
+        run: |
+          cd backend
+          source venv/bin/activate
+          python app.py &
+          sleep 10
+          pgrep -f app.py
+
+      - name: Backend health check
+        run: |
+          curl -f http://localhost:5000/
+
+      - name: Start frontend server (test)
+        run: |
+          cd frontend
+          npm run dev -- --host 0.0.0.0 --port 5174&
+          sleep 20
+          pgrep -f vite
+
+      - name: Frontend health check
+        run: |
+          curl -f http://localhost:5174/ 
